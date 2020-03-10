@@ -4,12 +4,12 @@ Implementation of "Attention is All You Need"
 
 import torch
 import torch.nn as nn
+from torch.nn.utils.rnn import pad_sequence
 
 from onmt.decoders.decoder import DecoderBase
 from onmt.modules import MultiHeadedAttention, AverageAttention
 from onmt.modules.position_ffn import PositionwiseFeedForward
 from onmt.utils.misc import sequence_mask
-
 
 class TransformerDecoderLayer(nn.Module):
     """Transformer Decoder layer block in Pre-Norm style.
@@ -291,6 +291,16 @@ class TransformerDecoder(DecoderBase):
         if step == 0:
             self._init_cache(memory_bank)
 
+        sep_id = kwargs['sep_id']
+
+        src_origin_ids = kwargs['src_origin']
+        src_origin_ids = src_origin_ids.transpose(0, 1).squeeze(dim=-1)
+
+        borders = []
+        batch_size = src_origin_ids.shape[0]
+        for i in range(batch_size):
+            borders.append((src_origin_ids[i] == sep_id).nonzero()[-1])
+
         tgt_words = tgt[:, :, 0].transpose(0, 1)
 
         emb = self.embeddings(tgt, step=step)
@@ -303,6 +313,25 @@ class TransformerDecoder(DecoderBase):
         src_lens = kwargs["memory_lengths"]
         src_max_len = self.state["src"].shape[0]
         src_pad_mask = ~sequence_mask(src_lens, src_max_len).unsqueeze(1)
+
+        history_memory_banks = []
+        current_memory_banks = []
+        history_pad_mask = []
+        current_pad_mask = []
+        # use borders to split src_memory_bank into history / current ones
+        for i in range(batch_size):
+            # we should keep the gradients as well as the separate values for self-attention
+            blank_memory = src_memory_bank.data.new(src_memory_bank[i].shape).fill_(0)
+            blank_memory[:borders[i]] = src_memory_bank[i, :borders[i]]
+            history_memory_banks.append(blank_memory)
+            # copy the remaining memory
+            blank_memory = src_memory_bank.data.new(src_memory_bank[i].shape).fill_(0)
+            blank_memory[borders[i]:] = src_memory_bank[i, borders[i]:]
+            current_memory_banks.append(blank_memory)
+
+        history_memory_banks = pad_sequence(history_memory_banks, batch_first=True)
+        current_memory_banks = pad_sequence(current_memory_banks, batch_first=True)
+
         tgt_pad_mask = tgt_words.data.eq(pad_idx).unsqueeze(1)  # [B, 1, T_tgt]
 
         with_align = kwargs.pop('with_align', False)
@@ -313,7 +342,8 @@ class TransformerDecoder(DecoderBase):
                 if step is not None else None
             output, attn, attn_align = layer(
                 output,
-                src_memory_bank,
+                history_memory_banks,
+                current_memory_banks,
                 src_pad_mask,
                 tgt_pad_mask,
                 layer_cache=layer_cache,

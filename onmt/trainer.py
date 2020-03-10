@@ -337,6 +337,9 @@ class Trainer(object):
         if self.accum_count > 1:
             self.optim.zero_grad()
 
+        # TODO: [SEP] is the separate symbol for History | Current sentence.
+        sep_id = None
+
         for k, batch in enumerate(true_batches):
             target_size = batch.tgt.size(0)
             # Truncated BPTT: reminder not compatible with accum > 1
@@ -344,6 +347,9 @@ class Trainer(object):
                 trunc_size = self.trunc_size
             else:
                 trunc_size = target_size
+
+            if sep_id is None:
+                sep_id = batch.dataset.fields['src'].base_field.vocab.stoi['[SEP]']
 
             src, src_lengths = batch.src if isinstance(batch.src, tuple) \
                 else (batch.src, None)
@@ -362,7 +368,8 @@ class Trainer(object):
                     self.optim.zero_grad()
 
                 outputs, attns = self.model(src, tgt, src_lengths, bptt=bptt,
-                                            with_align=self.with_align)
+                                            with_align=self.with_align,
+                                            sep_id=sep_id)
                 bptt = True
 
                 # 3. Compute loss.
