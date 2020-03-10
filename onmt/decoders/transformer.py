@@ -70,9 +70,11 @@ class TransformerDecoderLayer(nn.Module):
             heads, d_model, dropout=attention_dropout
         )
         # [his, cur]
-        self.feed_forward = PositionwiseFeedForward(d_model * 2, d_ff, dropout)
+        self.his_cur_feed_forward = PositionwiseFeedForward(d_model * 2, d_model, dropout)
+        self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout)
         self.layer_norm_1 = nn.LayerNorm(d_model, eps=1e-6)
         self.layer_norm_2 = nn.LayerNorm(d_model, eps=1e-6)
+        self.layer_norm_3 = nn.LayerNorm(d_model, eps=1e-6)
         self.drop = nn.Dropout(dropout)
         self.full_context_alignment = full_context_alignment
         self.alignment_heads = alignment_heads
@@ -176,8 +178,10 @@ class TransformerDecoderLayer(nn.Module):
                                                    mask=current_pad_mask,
                                                    layer_cache=layer_cache)
 
-        mid = torch.cat([his_mid, cur_mid], dim=2)
-        output = self.feed_forward(self.drop(mid) + query)
+        mid = self.his_cur_feed_forward(torch.cat([his_mid, cur_mid], dim=2))
+        mid_norm = self.layer_norm_3(self.drop(mid) + query)
+
+        output = self.feed_forward(self.drop(mid_norm) + mid)
 
         return output, his_attns, cur_attns
 
