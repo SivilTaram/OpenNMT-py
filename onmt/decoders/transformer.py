@@ -11,6 +11,7 @@ from onmt.modules import MultiHeadedAttention, AverageAttention
 from onmt.modules.position_ffn import PositionwiseFeedForward
 from onmt.utils.misc import sequence_mask
 
+
 class TransformerDecoderLayer(nn.Module):
     """Transformer Decoder layer block in Pre-Norm style.
     Pre-Norm style is an improvement w.r.t. Original paper's Post-Norm style,
@@ -63,9 +64,13 @@ class TransformerDecoderLayer(nn.Module):
                                               dropout=attention_dropout,
                                               aan_useffn=aan_useffn)
 
-        self.context_attn = MultiHeadedAttention(
+        self.his_context_attn = MultiHeadedAttention(
             heads, d_model, dropout=attention_dropout)
-        self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout)
+        self.cur_context_attn = MultiHeadedAttention(
+            heads, d_model, dropout=attention_dropout
+        )
+        # [his, cur]
+        self.feed_forward = PositionwiseFeedForward(d_model * 2, d_ff, dropout)
         self.layer_norm_1 = nn.LayerNorm(d_model, eps=1e-6)
         self.layer_norm_2 = nn.LayerNorm(d_model, eps=1e-6)
         self.drop = nn.Dropout(dropout)
@@ -107,7 +112,8 @@ class TransformerDecoderLayer(nn.Module):
             attn_align = attns.mean(dim=1)
         return output, top_attn, attn_align
 
-    def _forward(self, inputs, memory_bank, src_pad_mask, tgt_pad_mask,
+    def _forward(self, inputs, history_memory_bank, current_memory_bank,
+                 history_pad_mask, current_pad_mask, tgt_pad_mask,
                  layer_cache=None, step=None, future=False):
         """ A naive forward pass for transformer decoder.
 
@@ -115,8 +121,8 @@ class TransformerDecoderLayer(nn.Module):
 
         Args:
             inputs (FloatTensor): ``(batch_size, T, model_dim)``
-            memory_bank (FloatTensor): ``(batch_size, src_len, model_dim)``
-            src_pad_mask (LongTensor): ``(batch_size, 1, src_len)``
+            history_memory_bank (FloatTensor): ``(batch_size, src_len, model_dim)``
+            history_pad_mask (LongTensor): ``(batch_size, 1, src_len)``
             tgt_pad_mask (LongTensor): ``(batch_size, 1, T)``
             layer_cache (dict or None): cached layer info when stepwise decode
             step (int or None): stepwise decoding counter
@@ -126,7 +132,7 @@ class TransformerDecoderLayer(nn.Module):
             (FloatTensor, FloatTensor):
 
             * output ``(batch_size, T, model_dim)``
-            * attns ``(batch_size, head, T, src_len)``
+            * his_attns ``(batch_size, head, T, src_len)``
 
         """
         dec_mask = None
@@ -162,17 +168,22 @@ class TransformerDecoderLayer(nn.Module):
         query = self.drop(query) + inputs
 
         query_norm = self.layer_norm_2(query)
-        mid, attns = self.context_attn(memory_bank, memory_bank, query_norm,
-                                       mask=src_pad_mask,
-                                       layer_cache=layer_cache,
-                                       attn_type="context")
+        his_mid, his_attns = self.his_context_attn(history_memory_bank, history_memory_bank, query_norm,
+                                                   mask=history_pad_mask,
+                                                   layer_cache=layer_cache,
+                                                   attn_type="context")
+        cur_mid, cur_attns = self.cur_context_attn(current_memory_bank, current_memory_bank, query_norm,
+                                                   mask=current_pad_mask,
+                                                   layer_cache=layer_cache)
+
+        mid = torch.cat([his_mid, cur_mid], dim=2)
         output = self.feed_forward(self.drop(mid) + query)
 
-        return output, attns
+        return output, his_attns, cur_attns
 
     def update_dropout(self, dropout, attention_dropout):
         self.self_attn.update_dropout(attention_dropout)
-        self.context_attn.update_dropout(attention_dropout)
+        self.his_context_attn.update_dropout(attention_dropout)
         self.feed_forward.update_dropout(dropout)
         self.drop.p = dropout
 
@@ -230,11 +241,11 @@ class TransformerDecoder(DecoderBase):
 
         self.transformer_layers = nn.ModuleList(
             [TransformerDecoderLayer(d_model, heads, d_ff, dropout,
-             attention_dropout, self_attn_type=self_attn_type,
-             max_relative_positions=max_relative_positions,
-             aan_useffn=aan_useffn,
-             full_context_alignment=full_context_alignment,
-             alignment_heads=alignment_heads)
+                                     attention_dropout, self_attn_type=self_attn_type,
+                                     max_relative_positions=max_relative_positions,
+                                     aan_useffn=aan_useffn,
+                                     full_context_alignment=full_context_alignment,
+                                     alignment_heads=alignment_heads)
              for i in range(num_layers)])
 
         # previously, there was a GlobalAttention module here for copy
@@ -257,7 +268,7 @@ class TransformerDecoder(DecoderBase):
             opt.self_attn_type,
             opt.dropout[0] if type(opt.dropout) is list else opt.dropout,
             opt.attention_dropout[0] if type(opt.attention_dropout)
-            is list else opt.dropout,
+                                        is list else opt.dropout,
             embeddings,
             opt.max_relative_positions,
             opt.aan_useffn,
@@ -312,10 +323,12 @@ class TransformerDecoder(DecoderBase):
         pad_idx = self.embeddings.word_padding_idx
         src_lens = kwargs["memory_lengths"]
         src_max_len = self.state["src"].shape[0]
+
+        # batch_size x 1 x seq_len
         src_pad_mask = ~sequence_mask(src_lens, src_max_len).unsqueeze(1)
 
-        history_memory_banks = []
-        current_memory_banks = []
+        history_memory_bank = []
+        current_memory_bank = []
         history_pad_mask = []
         current_pad_mask = []
         # use borders to split src_memory_bank into history / current ones
@@ -323,14 +336,24 @@ class TransformerDecoder(DecoderBase):
             # we should keep the gradients as well as the separate values for self-attention
             blank_memory = src_memory_bank.data.new(src_memory_bank[i].shape).fill_(0)
             blank_memory[:borders[i]] = src_memory_bank[i, :borders[i]]
-            history_memory_banks.append(blank_memory)
+            history_memory_bank.append(blank_memory)
+            # 0 means valid, 1 means need to be masked
+            pad_mask = src_pad_mask[i].data.new(src_pad_mask[i].shape).fill_(1)
+            pad_mask[0, :borders[i]].fill_(0)
+            history_pad_mask.append(src_pad_mask[i] | pad_mask)
             # copy the remaining memory
             blank_memory = src_memory_bank.data.new(src_memory_bank[i].shape).fill_(0)
             blank_memory[borders[i]:] = src_memory_bank[i, borders[i]:]
-            current_memory_banks.append(blank_memory)
+            current_memory_bank.append(blank_memory)
+            # mask
+            pad_mask = src_pad_mask[i].data.new(src_pad_mask[i].shape).fill_(1)
+            pad_mask[0, borders[i]:].fill_(0)
+            current_pad_mask.append(src_pad_mask[i] | pad_mask)
 
-        history_memory_banks = pad_sequence(history_memory_banks, batch_first=True)
-        current_memory_banks = pad_sequence(current_memory_banks, batch_first=True)
+        history_memory_bank = pad_sequence(history_memory_bank, batch_first=True)
+        current_memory_bank = pad_sequence(current_memory_bank, batch_first=True)
+        history_pad_mask = pad_sequence(history_pad_mask, batch_first=True)
+        current_pad_mask = pad_sequence(current_pad_mask, batch_first=True)
 
         tgt_pad_mask = tgt_words.data.eq(pad_idx).unsqueeze(1)  # [B, 1, T_tgt]
 
@@ -342,9 +365,10 @@ class TransformerDecoder(DecoderBase):
                 if step is not None else None
             output, attn, attn_align = layer(
                 output,
-                history_memory_banks,
-                current_memory_banks,
-                src_pad_mask,
+                history_memory_bank,
+                current_memory_bank,
+                history_pad_mask,
+                current_pad_mask,
                 tgt_pad_mask,
                 layer_cache=layer_cache,
                 step=step,
