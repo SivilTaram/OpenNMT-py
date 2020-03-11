@@ -305,6 +305,8 @@ class Trainer(object):
         # Set model in validating mode.
         valid_model.eval()
 
+        sep_id = None
+
         with torch.no_grad():
             stats = onmt.utils.Statistics()
 
@@ -313,9 +315,12 @@ class Trainer(object):
                                    else (batch.src, None)
                 tgt = batch.tgt
 
+                if sep_id is None:
+                    sep_id = batch.dataset.fields['src'].base_field.vocab.stoi['[SEP]']
                 # F-prop through the model.
                 outputs, attns = valid_model(src, tgt, src_lengths,
-                                             with_align=self.with_align)
+                                             with_align=self.with_align,
+                                             sep_id=sep_id)
 
                 # Compute loss.
                 _, batch_stats = self.valid_loss(batch, outputs, attns)
