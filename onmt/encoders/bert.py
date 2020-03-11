@@ -67,16 +67,16 @@ class BertEncoder(nn.Module):
     def forward(self, input_ids, lengths, token_type_ids=None):
         """
         Args:
-            input_ids (Tensor): ``(B, S)``, padding ids=0
-            input_lengths (Tensor): ``(B)``, record length of sequence
-            token_type_ids (Tensor): ``(B, S)``, A(0), B(1), pad(0)
-            input_mask (Tensor): ``(B, S)``, 1 for masked (padding)
+            input_ids (Tensor): ``(seq_len, batch_size, feature_dim)``, padding ids=0
+            lengths (Tensor): ``(batch_size)``, record length of sequence
+            token_type_ids (seq_len, batch_size): ``(B, S)``, A(0), B(1), pad(0)
         Returns:
             all_encoder_layers (list of Tensor): ``(B, S, H)``, token level
             pooled_output (Tensor): ``(B, H)``, sequence level
         """
+        # remove the feature dimension
+        # seq_len x batch_size
 
-        # embedding vectors: [batch, seq, hidden_size]
         emb = self.embeddings(input_ids, token_type_ids)
 
         out = emb.transpose(0, 1).contiguous()

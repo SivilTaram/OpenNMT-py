@@ -33,22 +33,27 @@ class BertEmbeddings(nn.Module):
 
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, input_ids, token_type_ids=None):
+    def forward(self, input_ids, step=None, token_type_ids=None):
         """
         Args:
-            input_ids (Tensor): ``(B, S)``.
-            token_type_ids (Tensor): segment id ``(B, S)``.
+            input_ids (LongTensor): index tensor ``(seq_len, batch_size, feature_dim)``
+            step (LongTensor):
+            token_type_ids (Tensor): segment id ``(seq_len, batch_size)``.
         Returns:
             embeddings (Tensor): final embeddings, ``(B, S, H)``.
         """
+        input_ids = input_ids.squeeze(dim=-1)
+        input_ids = input_ids.transpose(0, 1).contiguous()
+
         seq_length = input_ids.size(1)
-        position_ids = torch.arange(
-            seq_length, dtype=torch.long, device=input_ids.device)
+        position_ids = torch.arange(seq_length, dtype=torch.long, device=input_ids.device)
         # [[0,1,...,seq_length-1]] -> [[0,1,...,seq_length-1] *batch_size]
         position_ids = position_ids.unsqueeze(0).expand_as(input_ids)
 
         if token_type_ids is None:
             token_type_ids = torch.zeros_like(input_ids)
+        else:
+            token_type_ids = token_type_ids.transpose(0, 1).contiguous()
 
         word_embeds = self.word_embeddings(input_ids)
         position_embeds = self.position_embeddings(position_ids)
@@ -58,7 +63,18 @@ class BertEmbeddings(nn.Module):
         # before fed into Attention comparing to original one
         # embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
-        return embeddings
+        return embeddings.transpose(0, 1).contiguous()
 
     def update_dropout(self, dropout):
         self.dropout.p = dropout
+
+    """
+    To adapt the interface
+    """
+    def load_pretrained_vectors(self, emb_file):
+        """Load in pretrained embeddings.
+
+        Args:
+          emb_file (str) : path to torch serialized embeddings
+        """
+        pass
