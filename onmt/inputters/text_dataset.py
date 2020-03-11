@@ -173,6 +173,7 @@ def text_fields(**kwargs):
     pad = kwargs.get("pad", "<blank>")
     bos = kwargs.get("bos", "<s>")
     eos = kwargs.get("eos", "</s>")
+    unk = kwargs.get("unk", "<unk>")
     truncate = kwargs.get("truncate", None)
     fields_ = []
     feat_delim = u"￨" if n_feats > 0 else None
@@ -187,7 +188,7 @@ def text_fields(**kwargs):
         feat = Field(
             init_token=bos, eos_token=eos,
             pad_token=pad, tokenize=tokenize,
-            include_lengths=use_len)
+            include_lengths=use_len, unk_token=unk)
         fields_.append((name, feat))
     assert fields_[0][0] == base_name  # sanity check
     field = TextMultiField(fields_[0][0], fields_[0][1], fields_[1:])

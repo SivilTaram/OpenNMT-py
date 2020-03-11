@@ -55,7 +55,8 @@ def _dynamic_dict(example, src_field, tgt_field):
     if "tgt" in example:
         tgt = tgt_field.tokenize(example["tgt"])
         mask = torch.LongTensor(
-            [unk_idx] + [src_ex_vocab.stoi[w] for w in tgt] + [unk_idx])
+            [unk_idx] + [src_ex_vocab.stoi[w] if w in src_ex_vocab.stoi
+                         else unk_idx for w in tgt] + [unk_idx])
         example["alignment"] = mask
     return src_ex_vocab, example
 

@@ -56,14 +56,13 @@ class BertEncoder(nn.Module):
             is list else opt.attention_dropout,
             opt.max_relative_positions)
 
-    def forward(self, input_ids, token_type_ids=None, input_mask=None,
-                output_all_encoded_layers=False):
+    def forward(self, input_ids, input_lengths, token_type_ids=None, input_mask=None):
         """
         Args:
             input_ids (Tensor): ``(B, S)``, padding ids=0
+            input_lengths (Tensor): ``(B)``, record length of sequence
             token_type_ids (Tensor): ``(B, S)``, A(0), B(1), pad(0)
             input_mask (Tensor): ``(B, S)``, 1 for masked (padding)
-            output_all_encoded_layers (bool): if out contain all hidden layer
         Returns:
             all_encoder_layers (list of Tensor): ``(B, S, H)``, token level
             pooled_output (Tensor): ``(B, H)``, sequence level
@@ -84,11 +83,9 @@ class BertEncoder(nn.Module):
         all_encoder_layers = []
         for layer in self.encoder:
             out = layer(out, attention_mask)
-            if output_all_encoded_layers:
-                all_encoder_layers.append(self.layer_norm(out))
+            all_encoder_layers.append(self.layer_norm(out))
         out = self.layer_norm(out)
-        if not output_all_encoded_layers:
-            all_encoder_layers.append(out)
+        all_encoder_layers.append(out)
         pooled_out = self.pooler(out)
         return all_encoder_layers, pooled_out
 

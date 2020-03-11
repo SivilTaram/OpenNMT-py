@@ -108,7 +108,8 @@ def get_fields(
     dynamic_dict=False,
     with_align=False,
     src_truncate=None,
-    tgt_truncate=None
+    tgt_truncate=None,
+    use_bert_tokenize=False,
 ):
     """
     Args:
@@ -130,7 +131,7 @@ def get_fields(
             ``src_data_type``'s data reader - see there for more details).
         tgt_truncate: Cut off tgt sequences beyond this (passed to
             :class:`TextDataReader` - see there for more details).
-
+        use_bert_tokenize: Whether to use WordPiece tokenization
     Returns:
         A dict mapping names to fields. These names need to match
         the dataset example attributes.
@@ -147,18 +148,28 @@ def get_fields(
                       "audio": audio_fields,
                       "vec": vec_fields}
 
+    if use_bert_tokenize:
+        pad = '[PAD]'
+        bos = '<S>'
+        eos = '<T>'
+        unk = '[UNK]'
+    else:
+        unk = '<unk>'
+
     src_field_kwargs = {"n_feats": n_src_feats,
                         "include_lengths": True,
-                        "pad": pad, "bos": None, "eos": None,
+                        "pad": pad, "bos": None, "eos": None, "unk": None,
                         "truncate": src_truncate,
-                        "base_name": "src"}
+                        "base_name": "src",
+                        "use_bert_tokenize": use_bert_tokenize}
     fields["src"] = fields_getters[src_data_type](**src_field_kwargs)
 
     tgt_field_kwargs = {"n_feats": n_tgt_feats,
                         "include_lengths": False,
-                        "pad": pad, "bos": bos, "eos": eos,
+                        "pad": pad, "bos": bos, "eos": eos, "unk": unk,
                         "truncate": tgt_truncate,
-                        "base_name": "tgt"}
+                        "base_name": "tgt",
+                        "use_bert_tokenize": use_bert_tokenize}
     fields["tgt"] = fields_getters["text"](**tgt_field_kwargs)
 
     indices = Field(use_vocab=False, dtype=torch.long, sequential=False)

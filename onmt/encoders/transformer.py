@@ -26,7 +26,6 @@ class TransformerEncoderLayer(nn.Module):
         is_bert (bool): default False. When set True,
                         layer_norm will be performed on the
                         direct connection of residual block.
-
     """
 
     def __init__(self, d_model, heads, d_ff, dropout, attention_dropout,
@@ -45,6 +44,7 @@ class TransformerEncoderLayer(nn.Module):
 
     def residual(self, output, x):
         """A Residual connection.
+
         Official BERT perform residual connection on layer normed input.
         BERT's layer_norm is done before pass into next block while onmt's
         layer_norm is performed at the begining.
@@ -64,10 +64,11 @@ class TransformerEncoderLayer(nn.Module):
 
             * outputs ``(batch_size, src_len, model_dim)``
         """
+
         input_norm = self.layer_norm(inputs)
         context, _ = self.self_attn(input_norm, input_norm, input_norm,
                                     mask=mask, attn_type="self")
-        out = self.dropout(context) + inputs
+        out = self.residual(self.dropout(context), inputs)
         return self.feed_forward(out)
 
     def update_dropout(self, dropout, attention_dropout):

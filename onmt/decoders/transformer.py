@@ -347,7 +347,7 @@ class TransformerDecoder(DecoderBase):
         # use borders to split src_memory_bank into history / current ones
         for i in range(batch_size):
             # we should keep the gradients as well as the separate values for self-attention
-            blank_memory = src_memory_bank.data.new(src_memory_bank[i].shape).fill_(0)
+            blank_memory = src_memory_bank.data.new(src_memory_bank[i].shape).fill_(pad_idx)
             blank_memory[:borders[i]] = src_memory_bank[i, :borders[i]]
             history_memory_bank.append(blank_memory)
             # 0 means valid, 1 means need to be masked
@@ -355,7 +355,7 @@ class TransformerDecoder(DecoderBase):
             pad_mask[0, :borders[i]].fill_(0)
             history_pad_mask.append(src_pad_mask[i] | pad_mask)
             # copy the remaining memory
-            blank_memory = src_memory_bank.data.new(src_memory_bank[i].shape).fill_(0)
+            blank_memory = src_memory_bank.data.new(src_memory_bank[i].shape).fill_(pad_idx)
             blank_memory[borders[i]:] = src_memory_bank[i, borders[i]:]
             current_memory_bank.append(blank_memory)
             # mask

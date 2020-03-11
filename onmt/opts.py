@@ -69,7 +69,7 @@ def model_opts(parser):
               help='Data type of the model.')
 
     group.add('--encoder_type', '-encoder_type', type=str, default='rnn',
-              choices=['rnn', 'brnn', 'mean', 'transformer', 'cnn'],
+              choices=['rnn', 'brnn', 'mean', 'transformer', 'cnn', 'bert'],
               help="Type of encoder layer to use. Non-RNN layers "
                    "are experimental. Options are "
                    "[rnn|brnn|mean|transformer|cnn].")
@@ -332,6 +332,10 @@ def preprocess_opts(parser):
               choices=[3, 1],
               help="Using grayscale image can training "
                    "model faster and smaller")
+
+    # Option on whether use BERT tokenizer
+    group.add('--use_bert_tokenize', '-use_bert_tokenize', action="store_true",
+              help="Whether to use BERT(word piece) tokenizer in training.")
 
 
 def train_opts(parser):
