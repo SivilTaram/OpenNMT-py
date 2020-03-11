@@ -91,8 +91,12 @@ class CopyGenerator(nn.Module):
         self.linear = nn.Linear(input_size, output_size)
         self.linear_copy = nn.Linear(input_size, 1)
         self.pad_idx = pad_idx
+        # extra parameters required by lambda transformer
+        self.hidden_dense = nn.Linear(input_size, 1, bias=False)
+        self.his_dense = nn.Linear(input_size, 1, bias=False)
+        self.cur_dense = nn.Linear(input_size, 1, bias=False)
 
-    def forward(self, hidden, attn, src_map):
+    def forward(self, hidden, his_attn, cur_attn, his_mid, cur_mid, src_map):
         """
         Compute a distribution over the target dictionary
         extended by the dynamic dictionary implied by copying
@@ -109,7 +113,7 @@ class CopyGenerator(nn.Module):
 
         # CHECKS
         batch_by_tlen, _ = hidden.size()
-        batch_by_tlen_, slen = attn.size()
+        batch_by_tlen_, slen = his_attn.size()
         slen_, batch, cvocab = src_map.size()
         aeq(batch_by_tlen, batch_by_tlen_)
         aeq(slen, slen_)
@@ -119,10 +123,17 @@ class CopyGenerator(nn.Module):
         logits[:, self.pad_idx] = -float('inf')
         prob = torch.softmax(logits, 1)
 
+        # Probability of lambda
+        feature = self.hidden_dense(hidden) + self.his_dense(his_mid) + self.cur_dense(cur_mid)
+        lambda_gate = torch.sigmoid(feature)
+
         # Probability of copying p(z=1) batch.
         p_copy = torch.sigmoid(self.linear_copy(hidden))
+
         # Probability of not copying: p_{word}(w) * (1 - p(z))
         out_prob = torch.mul(prob, 1 - p_copy)
+
+        attn = lambda_gate * his_attn + (1 - lambda_gate) * cur_attn
         mul_attn = torch.mul(attn, p_copy)
         copy_prob = torch.bmm(
             mul_attn.view(-1, batch, slen).transpose(0, 1),
@@ -196,13 +207,17 @@ class CopyGeneratorLossCompute(NMTLossCompute):
             batch, output, range_, attns)
 
         shard_state.update({
-            "copy_attn": attns.get("copy"),
+            "his_copy_attn": attns.get("his_copy"),
+            "cur_copy_attn": attns.get("cur_copy"),
+            "his_mid": attns.get("his_mid"),
+            "cur_mid": attns.get("cur_mid"),
             "align": batch.alignment[range_[0] + 1: range_[1]]
         })
         return shard_state
 
-    def _compute_loss(self, batch, output, target, copy_attn, align,
-                      std_attn=None, coverage_attn=None):
+    def _compute_loss(self, batch, output, target, his_copy_attn,
+                      cur_copy_attn, his_mid, cur_mid,
+                      align, std_attn=None, coverage_attn=None):
         """Compute the loss.
 
         The args must match :func:`self._make_shard_state()`.
@@ -217,7 +232,8 @@ class CopyGeneratorLossCompute(NMTLossCompute):
         target = target.view(-1)
         align = align.view(-1)
         scores = self.generator(
-            self._bottle(output), self._bottle(copy_attn), batch.src_map
+            self._bottle(output), self._bottle(his_copy_attn), self._bottle(cur_copy_attn),
+            self._bottle(his_mid), self._bottle(cur_mid), batch.src_map
         )
         loss = self.criterion(scores, align, target)
 

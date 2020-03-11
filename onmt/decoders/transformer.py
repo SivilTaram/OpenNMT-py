@@ -70,7 +70,7 @@ class TransformerDecoderLayer(nn.Module):
             heads, d_model, dropout=attention_dropout
         )
         # [his, cur]
-        self.his_cur_feed_forward = PositionwiseFeedForward(d_model * 2, d_model, dropout)
+        self.his_cur_feed_forward = nn.Linear(d_model * 2, d_model)
         self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout)
         self.layer_norm_1 = nn.LayerNorm(d_model, eps=1e-6)
         self.layer_norm_2 = nn.LayerNorm(d_model, eps=1e-6)
@@ -93,26 +93,34 @@ class TransformerDecoderLayer(nn.Module):
             (FloatTensor, FloatTensor, FloatTensor or None):
 
             * output ``(batch_size, T, model_dim)``
-            * top_attn ``(batch_size, T, src_len)``
+            * top_his_attn ``(batch_size, T, src_len)``
             * attn_align ``(batch_size, T, src_len)`` or None
         """
         with_align = kwargs.pop('with_align', False)
-        output, attns = self._forward(*args, **kwargs)
-        top_attn = attns[:, 0, :, :].contiguous()
+        output, his_attns, cur_attns, his_mid, cur_mid = self._forward(*args, **kwargs)
+
+        # batch_size x T x src_len
+        top_his_attn = his_attns[:, 0, :, :].contiguous()
+        top_cur_attn = cur_attns[:, 0, :, :].contiguous()
+
+        # batch_size x T x hidden_size
+        top_his_mid = his_mid
+        top_cur_mid = cur_mid
+
         attn_align = None
         if with_align:
             if self.full_context_alignment:
                 # return _, (B, Q_len, K_len)
-                _, attns = self._forward(*args, **kwargs, future=True)
+                _, his_attns = self._forward(*args, **kwargs, future=True)
 
             if self.alignment_heads > 0:
-                attns = attns[:, :self.alignment_heads, :, :].contiguous()
+                his_attns = his_attns[:, :self.alignment_heads, :, :].contiguous()
             # layer average attention across heads, get ``(B, Q, K)``
             # Case 1: no full_context, no align heads -> layer avg baseline
             # Case 2: no full_context, 1 align heads -> guided align
             # Case 3: full_context, 1 align heads -> full cte guided align
-            attn_align = attns.mean(dim=1)
-        return output, top_attn, attn_align
+            attn_align = his_attns.mean(dim=1)
+        return output, top_his_attn, top_cur_attn, top_his_mid, top_cur_mid, attn_align
 
     def _forward(self, inputs, history_memory_bank, current_memory_bank,
                  history_pad_mask, current_pad_mask, tgt_pad_mask,
@@ -179,11 +187,12 @@ class TransformerDecoderLayer(nn.Module):
                                                    layer_cache=layer_cache)
 
         mid = self.his_cur_feed_forward(torch.cat([his_mid, cur_mid], dim=2))
-        mid_norm = self.layer_norm_3(self.drop(mid) + query)
 
-        output = self.feed_forward(self.drop(mid_norm) + mid)
+        # the 3-rd layer norm is performed inside self.feed_forward
+        # here we use another feed forward to retain the residual connection
+        output = self.feed_forward(self.drop(mid) + query)
 
-        return output, his_attns, cur_attns
+        return output, his_attns, cur_attns, his_mid, cur_mid
 
     def update_dropout(self, dropout, attention_dropout):
         self.self_attn.update_dropout(attention_dropout)
@@ -367,7 +376,7 @@ class TransformerDecoder(DecoderBase):
         for i, layer in enumerate(self.transformer_layers):
             layer_cache = self.state["cache"]["layer_{}".format(i)] \
                 if step is not None else None
-            output, attn, attn_align = layer(
+            output, his_attn, cur_attn, his_mid, cur_mid, attn_align = layer(
                 output,
                 history_memory_bank,
                 current_memory_bank,
@@ -382,11 +391,19 @@ class TransformerDecoder(DecoderBase):
 
         output = self.layer_norm(output)
         dec_outs = output.transpose(0, 1).contiguous()
-        attn = attn.transpose(0, 1).contiguous()
+        his_attn = his_attn.transpose(0, 1).contiguous()
+        cur_attn = cur_attn.transpose(0, 1).contiguous()
+        his_mid = his_mid.transpose(0, 1).contiguous()
+        cur_mid = cur_mid.transpose(0, 1).contiguous()
 
-        attns = {"std": attn}
+        # TODO: coverage may not work in our scenario (split attention)
+        attns = {"std": his_attn}
         if self._copy:
-            attns["copy"] = attn
+            attns["his_copy"] = his_attn
+            attns["cur_copy"] = cur_attn
+            attns["his_mid"] = his_mid
+            attns["cur_mid"] = cur_mid
+
         if with_align:
             attns["align"] = attn_aligns[self.alignment_layer]  # `(B, Q, K)`
             # attns["align"] = torch.stack(attn_aligns, 0).mean(0)  # All avg
