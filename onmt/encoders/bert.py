@@ -5,6 +5,7 @@ Implementation from: https://raw.githubusercontent.com/Zenglinxiao/OpenNMT-py/be
 
 import torch.nn as nn
 from onmt.encoders.transformer import TransformerEncoderLayer
+from onmt.utils.misc import sequence_mask
 
 
 class BertEncoder(nn.Module):
@@ -56,7 +57,7 @@ class BertEncoder(nn.Module):
             is list else opt.attention_dropout,
             opt.max_relative_positions)
 
-    def forward(self, input_ids, input_lengths, token_type_ids=None, input_mask=None):
+    def forward(self, input_ids, lengths, token_type_ids=None):
         """
         Args:
             input_ids (Tensor): ``(B, S)``, padding ids=0
@@ -68,26 +69,18 @@ class BertEncoder(nn.Module):
             pooled_output (Tensor): ``(B, H)``, sequence level
         """
 
-        # OpenNMT waiting for mask of size [B, 1, T],
-        # while in MultiHeadAttention part2 -> [B, 1, 1, T]
-        if input_mask is None:
-            # shape: 2D tensor [batch, seq]
-            padding_idx = self.embeddings.word_padding_idx
-            # shape: 2D tensor [batch, seq]: 1 for tokens, 0 for paddings
-            input_mask = input_ids.data.eq(padding_idx)
-        # [batch, seq] -> [batch, 1, seq]
-        attention_mask = input_mask.unsqueeze(1)
-
         # embedding vectors: [batch, seq, hidden_size]
-        out = self.embeddings(input_ids, token_type_ids)
-        all_encoder_layers = []
+        emb = self.embeddings(input_ids, token_type_ids)
+
+        out = emb.transpose(0, 1).contiguous()
+        # [batch, seq] -> [batch, 1, seq]
+        mask = ~sequence_mask(lengths).unsqueeze(1)
+
         for layer in self.encoder:
-            out = layer(out, attention_mask)
-            all_encoder_layers.append(self.layer_norm(out))
+            out = layer(out, mask)
         out = self.layer_norm(out)
-        all_encoder_layers.append(out)
-        pooled_out = self.pooler(out)
-        return all_encoder_layers, pooled_out
+
+        return emb, out.transpose(0, 1).contiguous(), lengths
 
     def update_dropout(self, dropout):
         self.dropout = dropout
