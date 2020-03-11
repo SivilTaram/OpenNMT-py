@@ -1,0 +1,33 @@
+set CUDA_VISIBLE_DEVICES=1
+cd ..
+python  train.py -data data/dial_pg ^
+        -save_model tmp/dial_transformer_lambda_20000 ^
+        -copy_attn ^
+        -layers 6 ^
+        -rnn_size 256 ^
+        -word_vec_size 256 ^
+        -transformer_ff 1024 ^
+        -heads 8  ^
+        -encoder_type transformer ^
+        -decoder_type transformer ^
+        -position_encoding ^
+        -train_steps 20000 ^
+        -max_generator_batches 2 ^
+        -dropout 0.1 ^
+        -batch_size 64 ^
+        -optim adam ^
+        -adam_beta2 0.998 -decay_method noam ^
+        -warmup_steps 1000 ^
+        -learning_rate 0.5 ^
+        -max_grad_norm 0 ^
+        -param_init 0  ^
+        -share_embeddings ^
+        -param_init_glorot ^
+        -label_smoothing 0.1 ^
+        -valid_steps 300 ^
+        -save_checkpoint_steps 300 ^
+        -gpu_ranks 0 ^
+        -copy_attn_force ^
+        -seed 777 ^
+        -copy_loss_by_seqlength ^
+        -bridge
