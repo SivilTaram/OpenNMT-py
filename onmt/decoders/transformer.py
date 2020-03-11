@@ -363,6 +363,7 @@ class TransformerDecoder(DecoderBase):
             pad_mask[0, borders[i]:].fill_(0)
             current_pad_mask.append(src_pad_mask[i] | pad_mask)
 
+        # TODO: the speed may be a bottleneck for training
         history_memory_bank = pad_sequence(history_memory_bank, batch_first=True)
         current_memory_bank = pad_sequence(current_memory_bank, batch_first=True)
         history_pad_mask = pad_sequence(history_pad_mask, batch_first=True)

@@ -46,6 +46,9 @@ class ArgumentParser(cfargparse.ArgumentParser):
         if model_opt.copy_attn_type is None:
             model_opt.copy_attn_type = model_opt.global_attention
 
+        if not hasattr(model_opt, 'is_bert'):
+            model_opt.is_bert = False
+
         if model_opt.alignment_layer is None:
             model_opt.alignment_layer = -2
             model_opt.lambda_align = 0.0
