@@ -52,7 +52,7 @@ class TransformerDecoderLayer(nn.Module):
     def __init__(self, d_model, heads, d_ff, dropout, attention_dropout,
                  self_attn_type="scaled-dot", max_relative_positions=0,
                  aan_useffn=False, full_context_alignment=False,
-                 alignment_heads=0):
+                 alignment_heads=0, activation='relu'):
         super(TransformerDecoderLayer, self).__init__()
 
         if self_attn_type == "scaled-dot":
@@ -67,11 +67,10 @@ class TransformerDecoderLayer(nn.Module):
         self.his_context_attn = MultiHeadedAttention(
             heads, d_model, dropout=attention_dropout)
         self.cur_context_attn = MultiHeadedAttention(
-            heads, d_model, dropout=attention_dropout
-        )
+            heads, d_model, dropout=attention_dropout)
         # [his, cur]
         self.his_cur_feed_forward = nn.Linear(d_model * 2, d_model)
-        self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout)
+        self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout, activation)
         self.layer_norm_1 = nn.LayerNorm(d_model, eps=1e-6)
         self.layer_norm_2 = nn.LayerNorm(d_model, eps=1e-6)
         self.layer_norm_3 = nn.LayerNorm(d_model, eps=1e-6)
@@ -258,7 +257,8 @@ class TransformerDecoder(DecoderBase):
                                      max_relative_positions=max_relative_positions,
                                      aan_useffn=aan_useffn,
                                      full_context_alignment=full_context_alignment,
-                                     alignment_heads=alignment_heads)
+                                     alignment_heads=alignment_heads,
+                                     activation='gelu')
              for i in range(num_layers)])
 
         # previously, there was a GlobalAttention module here for copy

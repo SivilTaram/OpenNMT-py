@@ -1,7 +1,7 @@
 set CUDA_VISIBLE_DEVICES=3
 cd ..
 python  train.py -data data/dial_bert ^
-        -save_model tmp/dial_bert_12_layer ^
+        -save_model tmp/dial_bert_12_layer_pretrain ^
         -copy_attn ^
         -layers 12 ^
         -rnn_size 768 ^
@@ -31,4 +31,5 @@ python  train.py -data data/dial_bert ^
         -seed 777 ^
         -copy_loss_by_seqlength ^
         -bridge ^
-        -pretrained_file bert-base-chinese/onmt_bert.pt
+        -train_from bert-base-chinese/onmt_bert.pt ^
+        -is_bert

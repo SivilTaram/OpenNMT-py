@@ -169,7 +169,12 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
         assert src_field.base_field.vocab == tgt_field.base_field.vocab, \
             "preprocess with -share_vocab if you use share_embeddings"
 
-        tgt_emb.word_lut.weight = src_emb.word_lut.weight
+        if model_opt.is_bert:
+            assert isinstance(tgt_emb, BertEmbeddings)
+            tgt_emb.word_embeddings.weight = src_emb.word_embeddings.weight
+            tgt_emb.position_embeddings.weight = src_emb.position_embeddings.weight
+        else:
+            tgt_emb.word_lut.weight = src_emb.word_lut.weight
 
     decoder = build_decoder(model_opt, tgt_emb)
 
@@ -217,9 +222,12 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
         checkpoint['model'] = {fix_key(k): v
                                for k, v in checkpoint['model'].items()}
         # end of patch for backward compatibility
-
-        model.load_state_dict(checkpoint['model'], strict=False)
-        generator.load_state_dict(checkpoint['generator'], strict=False)
+        if not model_opt.is_bert:
+            model.load_state_dict(checkpoint['model'], strict=False)
+            generator.load_state_dict(checkpoint['generator'], strict=False)
+        else:
+            # initialize encoder
+            model.encoder.load_state_dict(checkpoint['model'], strict=False)
     else:
         if model_opt.param_init != 0.0:
             for p in model.parameters():

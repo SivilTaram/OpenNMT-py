@@ -30,4 +30,5 @@ python  train.py -data data/dial_bert ^
         -copy_attn_force ^
         -seed 777 ^
         -copy_loss_by_seqlength ^
-        -bridge
+        -bridge ^
+        -is_bert
