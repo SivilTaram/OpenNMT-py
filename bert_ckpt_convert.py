@@ -3,6 +3,7 @@
 from argparse import ArgumentParser
 import torch
 from onmt.encoders.bert import BertEncoder
+from onmt.models.bert_generators import BertPreTrainingHeads
 from onmt.modules.bert_embeddings import BertEmbeddings
 from collections import OrderedDict
 import re
@@ -107,15 +108,14 @@ def convert_bert_weights(bert_model, weights, n_layers=12):
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument("--layers", type=int, default=None, required=True)
+    parser.add_argument("--layers", type=int, default=12, required=True)
 
-    parser.add_argument("--bert_model_weights_file", "-i", type=str,
-                        default=None, required=True, help="Path to the "
+    parser.add_argument("--bert_model_weights_file", "-i", type=str, default="bert-base-chinese/pytorch_model.bin",
+                        required=True, help="Path to the "
                         "huggingface Bert weights file download from "
                         "https://github.com/huggingface/pytorch-transformers")
 
-    parser.add_argument("--output_name", "-o", type=str,
-                        default=None, required=True,
+    parser.add_argument("--output_name", "-o", type=str, required=True, default="bert-base-chinese/onmt_bert.pt",
                         help="output onmt version Bert weight file Path")
     args = parser.parse_args()
 
