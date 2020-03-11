@@ -538,7 +538,8 @@ def _read_vocab_file(vocab_path, tag):
             "{} vocabulary not found at {}".format(tag, vocab_path))
     else:
         with codecs.open(vocab_path, 'r', 'utf-8') as f:
-            return [line.strip().split()[0] for line in f if line.strip()]
+            # we only remove \n because there are \t in chinese vocab
+            return [line.strip('\n') for line in f if line.strip('\n')]
 
 
 def batch_iter(data, batch_size, batch_size_fn=None, batch_size_multiple=1):

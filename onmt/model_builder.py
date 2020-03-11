@@ -13,7 +13,8 @@ from onmt.encoders import str2enc
 
 from onmt.decoders import str2dec
 
-from onmt.modules import Embeddings, VecEmbedding, CopyGenerator
+from onmt.modules import Embeddings, VecEmbedding, CopyGenerator, BertEmbeddings
+
 from onmt.modules.util_class import Cast
 from onmt.utils.misc import use_gpu
 from onmt.utils.logging import logger
@@ -27,6 +28,16 @@ def build_embeddings(opt, text_field, for_encoder=True):
         text_field(TextMultiField): word and feats field.
         for_encoder(bool): build Embeddings for encoder or decoder?
     """
+    if opt.is_bert:
+        token_fields_vocab = text_field.base_field.vocab
+        vocab_size = len(token_fields_vocab)
+        emb_dim = opt.word_vec_size
+        return BertEmbeddings(
+            vocab_size, emb_dim,
+            dropout=(opt.dropout[0] if type(opt.dropout) is list
+                     else opt.dropout)
+        )
+
     emb_dim = opt.src_word_vec_size if for_encoder else opt.tgt_word_vec_size
 
     if opt.model_type == "vec" and for_encoder:

@@ -201,6 +201,9 @@ def model_opts(parser):
               help="For FP16 training, the opt_level to use."
                    "See https://nvidia.github.io/apex/amp.html#opt-levels.")
 
+    group.add('--pretrained_file', '-pretrained_file', type=str, default=None)
+    group.add('--is_bert', '-is_bert', action="store_true")
+
 
 def preprocess_opts(parser):
     """ Pre-procesing options """
