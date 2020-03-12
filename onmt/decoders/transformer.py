@@ -333,11 +333,14 @@ class TransformerDecoder(DecoderBase):
         mem_batch_size = src_memory_bank.shape[0]
 
         if input_batch_size != mem_batch_size:
+            batch_offset = kwargs['batch_offset']
+            assert batch_offset is not None
             # there are beams in translation
+            input_batch_size = batch_offset.shape[0]
             assert mem_batch_size % input_batch_size == 0
             # re-shape the src_origin_ids
             beam_size = mem_batch_size // input_batch_size
-            src_origin_ids = src_origin_ids.unsqueeze(dim=1).repeat(1, beam_size, 1)
+            src_origin_ids = src_origin_ids[batch_offset, :].unsqueeze(dim=1).repeat(1, beam_size, 1)
             src_origin_ids = src_origin_ids.view(mem_batch_size, -1).contiguous()
 
         borders = []
@@ -397,7 +400,6 @@ class TransformerDecoder(DecoderBase):
                 history_pad_mask,
                 current_pad_mask,
                 tgt_pad_mask,
-                layer_cache=layer_cache,
                 step=step,
                 with_align=with_align)
             if attn_align is not None:

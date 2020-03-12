@@ -342,7 +342,8 @@ def _build_field_vocab(field, counter, size_multiple=1, **kwargs):
     all_specials = [
         field.unk_token, field.pad_token, field.init_token, field.eos_token
     ]
-    specials = [tok for tok in all_specials if tok is not None]
+    # TODO: manually avoid changing the vocab word order
+    specials = [tok for tok in all_specials if tok is not None and tok not in counter]
     field.vocab = field.vocab_cls(counter, specials=specials, **kwargs)
     if size_multiple > 1:
         _pad_vocab_to_multiple(field.vocab, size_multiple)
@@ -504,8 +505,10 @@ def _merge_field_vocabs(src_field, tgt_field, vocab_size, min_freq,
                         vocab_size_multiple):
     # in the long run, shouldn't it be possible to do this by calling
     # build_vocab with both the src and tgt data?
+    src_vocab = src_field.vocab.itos
     specials = [tgt_field.unk_token, tgt_field.pad_token,
                 tgt_field.init_token, tgt_field.eos_token]
+    specials = [word for word in specials if word not in src_vocab]
     merged = sum(
         [src_field.vocab.freqs, tgt_field.vocab.freqs], Counter()
     )

@@ -587,7 +587,7 @@ class Translator(object):
         # in case of Gold Scoring tgt_len = actual length, batch = 1 batch
         dec_out, dec_attn = self.model.decoder(
             decoder_in, memory_bank, memory_lengths=memory_lengths, step=step,
-            sep_id=sep_id, src_origin=src_origin
+            sep_id=sep_id, src_origin=src_origin, batch_offset=batch_offset
         )
 
         # Generator forward.

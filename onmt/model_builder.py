@@ -106,10 +106,6 @@ def load_test_model(opt, model_path=None):
                             map_location=lambda storage, loc: storage)
 
     model_opt = ArgumentParser.ckpt_model_opts(checkpoint['opt'])
-
-    # TODO: is_bert only validate in training
-    model_opt.is_bert = False
-
     ArgumentParser.update_model_opts(model_opt)
     ArgumentParser.validate_model_opts(model_opt)
     vocab = checkpoint['vocab']
@@ -226,12 +222,12 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
         checkpoint['model'] = {fix_key(k): v
                                for k, v in checkpoint['model'].items()}
         # end of patch for backward compatibility
-        if not model_opt.is_bert:
-            model.load_state_dict(checkpoint['model'], strict=False)
-            generator.load_state_dict(checkpoint['generator'], strict=False)
-        else:
+        if model_opt.is_bert and 'vocab' not in checkpoint:
             # initialize encoder
             model.encoder.load_state_dict(checkpoint['model'], strict=False)
+        else:
+            model.load_state_dict(checkpoint['model'], strict=False)
+            generator.load_state_dict(checkpoint['generator'], strict=False)
     else:
         if model_opt.param_init != 0.0:
             for p in model.parameters():
