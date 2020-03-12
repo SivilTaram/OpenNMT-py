@@ -45,8 +45,11 @@ class BertEmbeddings(nn.Module):
         input_ids = input_ids.squeeze(dim=-1)
         input_ids = input_ids.transpose(0, 1).contiguous()
 
-        seq_length = input_ids.size(1)
-        position_ids = torch.arange(seq_length, dtype=torch.long, device=input_ids.device)
+        if step is None:
+            seq_length = input_ids.size(1)
+            position_ids = torch.arange(seq_length, dtype=torch.long, device=input_ids.device)
+        else:
+            position_ids = torch.zeros([1], dtype=torch.long, device=input_ids.device).fill_(step)
         # [[0,1,...,seq_length-1]] -> [[0,1,...,seq_length-1] *batch_size]
         position_ids = position_ids.unsqueeze(0).expand_as(input_ids)
 
