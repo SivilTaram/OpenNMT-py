@@ -175,8 +175,8 @@ class TransformerDecoderLayer(nn.Module):
                                       layer_cache=layer_cache, step=step)
 
         query = self.drop(query) + inputs
-
         query_norm = self.layer_norm_2(query)
+
         his_mid, his_attns = self.his_context_attn(history_memory_bank, history_memory_bank, query_norm,
                                                    mask=history_pad_mask,
                                                    layer_cache=layer_cache,
