@@ -104,7 +104,11 @@ class CopyGenerator(nn.Module):
 
         Args:
            hidden (FloatTensor): hidden outputs ``(batch x tlen, input_size)``
-           attn (FloatTensor): attn for each ``(batch x tlen, input_size)``
+           his_mid (FloatTensor): hidden outputs ``(batch x tlen, input_size)``
+           cur_mid (FloatTensor): hidden outputs ``(batch x tlen, input_size)``
+
+           his_attn (FloatTensor): attn for each ``(batch x tlen, input_size)``
+           cur_attn (FloatTensor): attn for each ``(batch x tlen, input_size)``
            src_map (FloatTensor):
                A sparse indicator matrix mapping each source word to
                its index in the "extended" vocab containing.
@@ -140,7 +144,7 @@ class CopyGenerator(nn.Module):
             src_map.transpose(0, 1)
         ).transpose(0, 1)
         copy_prob = copy_prob.contiguous().view(-1, cvocab)
-        return torch.cat([out_prob, copy_prob], 1)
+        return torch.cat([out_prob, copy_prob], 1), attn
 
 
 class CopyGeneratorLoss(nn.Module):
@@ -226,12 +230,12 @@ class CopyGeneratorLossCompute(NMTLossCompute):
             batch: the current batch.
             output: the predict output from the model.
             target: the validate target to compare output with.
-            copy_attn: the copy attention value.
+            his_copy_attn: the copy attention value.
             align: the align info.
         """
         target = target.view(-1)
         align = align.view(-1)
-        scores = self.generator(
+        scores, _ = self.generator(
             self._bottle(output), self._bottle(his_copy_attn), self._bottle(cur_copy_attn),
             self._bottle(his_mid), self._bottle(cur_mid), batch.src_map
         )

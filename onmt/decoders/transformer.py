@@ -183,7 +183,8 @@ class TransformerDecoderLayer(nn.Module):
                                                    attn_type="context")
         cur_mid, cur_attns = self.cur_context_attn(current_memory_bank, current_memory_bank, query_norm,
                                                    mask=current_pad_mask,
-                                                   layer_cache=layer_cache)
+                                                   layer_cache=layer_cache,
+                                                   attn_type="context")
 
         mid = self.his_cur_feed_forward(torch.cat([his_mid, cur_mid], dim=2))
 
@@ -320,18 +321,30 @@ class TransformerDecoder(DecoderBase):
         src_origin_ids = kwargs['src_origin']
         src_origin_ids = src_origin_ids.transpose(0, 1).squeeze(dim=-1)
 
-        borders = []
-        batch_size = src_origin_ids.shape[0]
-        for i in range(batch_size):
-            borders.append((src_origin_ids[i] == sep_id).nonzero()[-1])
-
-        tgt_words = tgt[:, :, 0].transpose(0, 1)
-
         emb = self.embeddings(tgt, step=step)
         assert emb.dim() == 3  # len x batch x embedding_dim
 
         output = emb.transpose(0, 1).contiguous()
+
+        # batch (maybe x beam size) x len x hidden_size
         src_memory_bank = memory_bank.transpose(0, 1).contiguous()
+
+        input_batch_size = src_origin_ids.shape[0]
+        mem_batch_size = src_memory_bank.shape[0]
+
+        if input_batch_size != mem_batch_size:
+            # there are beams in translation
+            assert mem_batch_size % input_batch_size == 0
+            # re-shape the src_origin_ids
+            beam_size = mem_batch_size // input_batch_size
+            src_origin_ids = src_origin_ids.unsqueeze(dim=1).repeat(1, beam_size, 1)
+            src_origin_ids = src_origin_ids.view(mem_batch_size, -1).contiguous()
+
+        borders = []
+        for i in range(mem_batch_size):
+            borders.append((src_origin_ids[i] == sep_id).nonzero()[-1])
+
+        tgt_words = tgt[:, :, 0].transpose(0, 1)
 
         pad_idx = self.embeddings.word_padding_idx
         src_lens = kwargs["memory_lengths"]
@@ -345,7 +358,7 @@ class TransformerDecoder(DecoderBase):
         history_pad_mask = []
         current_pad_mask = []
         # use borders to split src_memory_bank into history / current ones
-        for i in range(batch_size):
+        for i in range(mem_batch_size):
             # we should keep the gradients as well as the separate values for self-attention
             blank_memory = src_memory_bank.data.new(src_memory_bank[i].shape).fill_(pad_idx)
             blank_memory[:borders[i]] = src_memory_bank[i, :borders[i]]

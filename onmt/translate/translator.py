@@ -370,7 +370,7 @@ class Translator(object):
                                           in align_pharaohs]
                     n_best_preds = [pred + " ||| " + align
                                     for pred, align in zip(
-                                        n_best_preds, n_best_preds_align)]
+                            n_best_preds, n_best_preds_align)]
                 all_predictions += [n_best_preds]
                 self.out_file.write('\n'.join(n_best_preds) + '\n')
                 self.out_file.flush()
@@ -428,9 +428,9 @@ class Translator(object):
             total_time = end_time - start_time
             self._log("Total translation time (s): %f" % total_time)
             self._log("Average translation time (s): %f" % (
-                total_time / len(all_predictions)))
+                    total_time / len(all_predictions)))
             self._log("Tokens per second: %f" % (
-                pred_words_total / total_time))
+                    pred_words_total / total_time))
 
         if self.dump_beam:
             import json
@@ -548,7 +548,7 @@ class Translator(object):
 
     def _run_encoder(self, batch):
         src, src_lengths = batch.src if isinstance(batch.src, tuple) \
-                           else (batch.src, None)
+            else (batch.src, None)
 
         enc_states, memory_bank, src_lengths = self.model.encoder(
             src, src_lengths)
@@ -556,9 +556,9 @@ class Translator(object):
             assert not isinstance(memory_bank, tuple), \
                 'Ensemble decoding only supported for text data'
             src_lengths = torch.Tensor(batch.batch_size) \
-                               .type_as(memory_bank) \
-                               .long() \
-                               .fill_(memory_bank.size(0))
+                .type_as(memory_bank) \
+                .long() \
+                .fill_(memory_bank.size(0))
         return src, enc_states, memory_bank, src_lengths
 
     def _decode_and_generate(
@@ -570,19 +570,24 @@ class Translator(object):
             memory_lengths,
             src_map=None,
             step=None,
-            batch_offset=None):
+            batch_offset=None,
+            # we need src_origin to split the history/current content
+            src_origin=None):
         if self.copy_attn:
             # Turn any copied words into UNKs.
             decoder_in = decoder_in.masked_fill(
                 decoder_in.gt(self._tgt_vocab_len - 1), self._tgt_unk_idx
             )
 
+        sep_id = batch.dataset.fields['src'].base_field.vocab.stoi['[SEP]']
+
         # Decoder forward, takes [tgt_len, batch, nfeats] as input
         # and [src_len, batch, hidden] as memory_bank
         # in case of inference tgt_len = 1, batch = beam times batch_size
         # in case of Gold Scoring tgt_len = actual length, batch = 1 batch
         dec_out, dec_attn = self.model.decoder(
-            decoder_in, memory_bank, memory_lengths=memory_lengths, step=step
+            decoder_in, memory_bank, memory_lengths=memory_lengths, step=step,
+            sep_id=sep_id, src_origin=src_origin
         )
 
         # Generator forward.
@@ -595,10 +600,26 @@ class Translator(object):
             # returns [(batch_size x beam_size) , vocab ] when 1 step
             # or [ tgt_len, batch_size, vocab ] when full sentence
         else:
-            attn = dec_attn["copy"]
-            scores = self.model.generator(dec_out.view(-1, dec_out.size(2)),
-                                          attn.view(-1, attn.size(2)),
-                                          src_map)
+            if "copy" in dec_attn:
+                attn = dec_attn["copy"]
+                scores = self.model.generator(dec_out.view(-1, dec_out.size(2)),
+                                              attn.view(-1, attn.size(2)),
+                                              src_map)
+            elif "his_copy" in dec_attn:
+                his_attn = dec_attn["his_copy"]
+                cur_attn = dec_attn["cur_copy"]
+                his_mid = dec_attn["his_mid"]
+                cur_mid = dec_attn["cur_mid"]
+
+                attn_shape = his_attn.shape
+                scores, attn = self.model.generator(dec_out.view(-1, dec_out.size(2)),
+                                                    his_attn.view(-1, his_attn.size(2)),
+                                                    cur_attn.view(-1, cur_attn.size(2)),
+                                                    his_mid.view(-1, his_mid.size(2)),
+                                                    cur_mid.view(-1, cur_mid.size(2)),
+                                                    src_map)
+                # convert attn as the same shape as normal copy
+                attn = attn.view(attn_shape)
             # here we have scores [tgt_lenxbatch, vocab] or [beamxbatch, vocab]
             if batch_offset is None:
                 scores = scores.view(-1, batch.batch_size, scores.size(-1))
@@ -672,7 +693,8 @@ class Translator(object):
                 memory_lengths=memory_lengths,
                 src_map=src_map,
                 step=step,
-                batch_offset=decode_strategy.batch_offset)
+                batch_offset=decode_strategy.batch_offset,
+                src_origin=src)
 
             decode_strategy.advance(log_probs, attn)
             any_finished = decode_strategy.is_finished.any()
