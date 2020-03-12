@@ -106,6 +106,10 @@ def load_test_model(opt, model_path=None):
                             map_location=lambda storage, loc: storage)
 
     model_opt = ArgumentParser.ckpt_model_opts(checkpoint['opt'])
+
+    # TODO: is_bert only validate in training
+    model_opt.is_bert = False
+
     ArgumentParser.update_model_opts(model_opt)
     ArgumentParser.validate_model_opts(model_opt)
     vocab = checkpoint['vocab']
