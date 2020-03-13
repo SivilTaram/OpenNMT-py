@@ -150,8 +150,8 @@ def get_fields(
 
     if use_bert_tokenize:
         pad = '[PAD]'
-        bos = '<S>'
-        eos = '<T>'
+        bos = '[BOS]'
+        eos = '[EOS]'
         unk = '[UNK]'
     else:
         unk = '<unk>'

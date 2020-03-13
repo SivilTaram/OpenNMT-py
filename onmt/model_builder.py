@@ -172,7 +172,6 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
         if model_opt.is_bert:
             assert isinstance(tgt_emb, BertEmbeddings)
             tgt_emb.word_embeddings.weight = src_emb.word_embeddings.weight
-            tgt_emb.position_embeddings.weight = src_emb.position_embeddings.weight
         else:
             tgt_emb.word_lut.weight = src_emb.word_lut.weight
 
@@ -200,14 +199,20 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
             gen_func
         )
         if model_opt.share_decoder_embeddings:
-            generator[0].weight = decoder.embeddings.word_lut.weight
+            if model_opt.is_bert:
+                generator[0].weight = decoder.embeddings.word_embeddings.weight
+            else:
+                generator[0].weight = decoder.embeddings.word_lut.weight
     else:
         tgt_base_field = fields["tgt"].base_field
         vocab_size = len(tgt_base_field.vocab)
         pad_idx = tgt_base_field.vocab.stoi[tgt_base_field.pad_token]
         generator = CopyGenerator(model_opt.dec_rnn_size, vocab_size, pad_idx)
         if model_opt.share_decoder_embeddings:
-            generator.linear.weight = decoder.embeddings.word_lut.weight
+            if model_opt.is_bert:
+                generator.linear.weight = decoder.embeddings.word_embeddings.weight
+            else:
+                generator.linear.weight = decoder.embeddings.word_lut.weight
 
     # Load the model states from checkpoint or initialize them.
     if checkpoint is not None:
@@ -221,7 +226,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
 
         checkpoint['model'] = {fix_key(k): v
                                for k, v in checkpoint['model'].items()}
-        # end of patch for backward compatibility
+        # patch for OpenNMT format compatibility
         if model_opt.is_bert and 'vocab' not in checkpoint:
             # initialize encoder
             model.encoder.load_state_dict(checkpoint['model'], strict=False)

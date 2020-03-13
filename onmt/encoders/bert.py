@@ -6,7 +6,6 @@ Implementation from: https://raw.githubusercontent.com/Zenglinxiao/OpenNMT-py/be
 import torch.nn as nn
 from onmt.encoders.transformer import TransformerEncoderLayer
 from onmt.utils.misc import sequence_mask
-import torch
 
 
 class BertEncoder(nn.Module):
@@ -39,7 +38,7 @@ class BertEncoder(nn.Module):
             [TransformerEncoderLayer(d_model, heads, d_ff,
              dropout, attention_dropout,
              max_relative_positions=max_relative_positions,
-             activation='gelu', is_bert=True) for _ in range(num_layers)])
+             activation='gelu') for _ in range(num_layers)])
 
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-12)
         self.pooler = BertPooler(d_model)
@@ -49,7 +48,7 @@ class BertEncoder(nn.Module):
         """Alternate constructor."""
         return cls(
             embeddings,
-            opt.layers,
+            opt.enc_layers,
             opt.word_vec_size,
             opt.heads,
             opt.transformer_ff,

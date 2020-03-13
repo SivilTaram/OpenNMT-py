@@ -29,18 +29,6 @@ class PositionwiseFeedForward(nn.Module):
         self.dropout_1 = nn.Dropout(dropout)
         self.activation = get_activation_fn(activation)
         self.dropout_2 = nn.Dropout(dropout)
-        self.is_bert = is_bert
-
-    def residual(self, output, x):
-        """A Residual connection.
-
-        Official BERT perform residual connection on layer normed input.
-        BERT's layer_norm is done before pass into next block while onmt's
-        layer_norm is performed at the begining.
-        """
-
-        maybe_norm = self.layer_norm(x) if self.is_bert else x
-        return output + maybe_norm
 
     def forward(self, x):
         """Layer definition.
@@ -51,10 +39,11 @@ class PositionwiseFeedForward(nn.Module):
         Returns:
             (FloatTensor): Output ``(batch_size, input_len, model_dim)``.
         """
-
-        inter = self.dropout_1(self.activation(self.w_1(self.layer_norm(x))))
+        x_norm = self.layer_norm(x)
+        inter = self.dropout_1(self.activation(self.w_1(x_norm)))
         output = self.dropout_2(self.w_2(inter))
-        return self.residual(output, x)
+        residual_output = output + x_norm
+        return residual_output
 
     def update_dropout(self, dropout):
         self.dropout_1.p = dropout

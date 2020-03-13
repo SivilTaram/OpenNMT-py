@@ -35,23 +35,10 @@ class TransformerEncoderLayer(nn.Module):
         self.self_attn = MultiHeadedAttention(
             heads, d_model, dropout=attention_dropout,
             max_relative_positions=max_relative_positions)
-        self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout,
-                                                    activation, is_bert)
+        self.feed_forward = PositionwiseFeedForward(d_model, d_ff, dropout, activation)
         self.layer_norm = nn.LayerNorm(
             d_model, eps=1e-12 if is_bert else 1e-6)
         self.dropout = nn.Dropout(dropout)
-        self.is_bert = is_bert
-
-    def residual(self, output, x):
-        """A Residual connection.
-
-        Official BERT perform residual connection on layer normed input.
-        BERT's layer_norm is done before pass into next block while onmt's
-        layer_norm is performed at the begining.
-        """
-
-        maybe_norm = self.layer_norm(x) if self.is_bert else x
-        return output + maybe_norm
 
     def forward(self, inputs, mask):
         """
@@ -64,11 +51,11 @@ class TransformerEncoderLayer(nn.Module):
 
             * outputs ``(batch_size, src_len, model_dim)``
         """
-
+        # Embedding -> [ LayerNorm -> Self Attention -> LayerNorm -> Position-wise FeedForward ]
         input_norm = self.layer_norm(inputs)
         context, _ = self.self_attn(input_norm, input_norm, input_norm,
                                     mask=mask, attn_type="self")
-        out = self.residual(self.dropout(context), inputs)
+        out = self.dropout(context) + input_norm
         return self.feed_forward(out)
 
     def update_dropout(self, dropout, attention_dropout):
